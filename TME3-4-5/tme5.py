@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from mltools import plot_data, plot_frontiere, make_grid, gen_arti
-from sklearn.model_selection import train_test_split, GridSearchCV, cross_val_score
+from sklearn.model_selection import train_test_split, GridSearchCV, cross_validate
 import sklearn.svm
 
 def perceptron_loss(w,x,y):
@@ -14,24 +14,25 @@ def perceptron_loss(w,x,y):
     x : n lignes, d colonnes
     w : d lignes, 1 colonne
     y : n lignes, 1 colonne
-    Retourne le cout perceptron
+    Retourne le cout perceptron (hinge-loss)
     """
     y = y.reshape(-1,1)
     w = w.reshape(-1,1)
     x = x.reshape(y.shape[0],w.shape[0])
-    return np.maximum(0,-1*y*np.dot(x,w))
+    return np.maximum(0,-y*(x@w))
 
 def perceptron_grad(w,x,y):
     """
     array**3 -> float
-    Retourne le cout du gradient
+    x : n lignes, d colonnes
+    w : d lignes, 1 colonne
+    y : n lignes, 1 colonne
+    Retourne le cout du gradient du perceptron (gradient du hinge-loss)
     """
     y = y.reshape(-1,1)
     w = w.reshape(-1,1)
     x = x.reshape(y.shape[0],w.shape[0])
-    
-    return np.where(-1*y*np.dot(x,w) < 0, 0, -1*y*x)
-    
+    return np.where((-y*x)*perceptron_loss(w,x,y) < 0, 0, -y*x)
 
 class Lineaire(object):
     def __init__(self,loss=perceptron_loss,loss_g=perceptron_grad,max_iter=100,eps=0.01):
@@ -86,7 +87,7 @@ def  plot_frontiere_proba(data,f,step=20):
 if __name__ =="__main__":
     ## Tirage d'un jeu de données aléatoire avec un bruit de 0.1
     ## mélange de 4 gaussiennes ou echiquier (car 2 gaussiennes c'est trop facile)
-    datax, datay = gen_arti(epsilon=0.1,data_type=1)
+    datax, datay = gen_arti(epsilon=0.2,data_type=1)
     datay = datay.reshape(-1)
     X_train, X_test, y_train, y_test = train_test_split(datax,datay)
 
@@ -114,49 +115,69 @@ if __name__ =="__main__":
 
 
     ## Parametres pour le kernel lineaire
-    dothis = False
-    aff = False
-    C = np.linspace(0.1,5,30)
-    nb_supp_vect = []
-    scores_train = []
-    scores_test = []
+    dothis = True
+    aff = True
     if dothis:
+        C = np.linspace(0.1,2,30)
+        nb_supp_vect = []
+        scores = []
+
         ## Tirage d'un jeu de données aléatoire très bruité
-        datax, datay = gen_arti(epsilon=0.5,data_type=0)
+        datax, datay = gen_arti(epsilon=0.8,data_type=0)
+        datay = datay.reshape(-1)
+
+        for i in range(len(C)):
+            clf = sklearn.svm.SVC(C=C[i],kernel="linear",probability=True)
+            scores.append(cross_validate(clf,datax,datay,cv=5,return_train_score=True))
+        
+        scores_train = []
+        scores_test = []
+        for i in range(len(scores)):
+            scores_train.append(scores[i]["train_score"].mean())
+            scores_test.append(scores[i]["test_score"].mean())
+        scores_train = np.array(scores_train)
+        scores_test = np.array(scores_test)
+        print("best c :",C[scores_test.argmax()])
+
+        if aff:
+            plt.figure()
+            plt.plot(C,scores_train,label='train')
+            plt.plot(C,scores_test,label='test')
+            plt.title("scores")
+            plt.legend()
+
+    ## Vecteurs support pour le kernel lineaire
+    dothis = True
+    aff = True
+    if dothis:
+        C = np.linspace(0.1,2,30)
+        nb_supp_vect = []
+
+        ## Tirage d'un jeu de données aléatoire très bruité
+        datax, datay = gen_arti(epsilon=0.8,data_type=0)
         datay = datay.reshape(-1)
         X_train, X_test, y_train, y_test = train_test_split(datax,datay)
-
-        for c in C:
-            clf = sklearn.svm.SVC(C=c,kernel="linear",probability=True)
+        
+        for i in range(len(C)):
+            clf = sklearn.svm.SVC(C=C[i],kernel="linear",probability=True)
             clf.fit(X_train,y_train)
-
-            y_hat_train = clf.predict(X_train)
-            y_hat_test = clf.predict(X_test)
             
             nb_supp_vect.append(len(clf.support_vectors_))
-            scores_train.append(clf.score(X_train,y_train))
-            scores_test.append(clf.score(X_test,y_test))
 
             # affichage
-            if aff:
+            if aff and (i%10==0):
                 plt.figure()
                 ## Visualisation des données et de la frontière de décision
                 plot_frontiere_proba(X_train,lambda x : clf.predict_proba(x)[:,0],step=50)
                 plot_data(datax,datay)
                 plot_data(clf.support_vectors_)
                 plt.title("linear")
-        
-        #print(scores_train)
-        #print(scores_test)
-        plt.figure()
-        plt.plot(C,nb_supp_vect)
-        plt.title("nombre vecteurs support") #diminue
 
-        plt.figure()
-        plt.plot(C,scores_train,label='train')
-        plt.plot(C,scores_test,label='test')
-        plt.title("scores") #?
-        plt.legend()
+        if aff:
+            plt.figure()
+            plt.plot(C,nb_supp_vect)
+            plt.title("nombre vecteurs support") #diminue
+        
 
     ## Parametres pour le kernel polynomial
     dothis = False
@@ -243,10 +264,3 @@ if __name__ =="__main__":
         print(nb_supp_vect)
         print(scores_train)
         print(scores_test)
-
-
-        
-
-
-
-
